@@ -65,7 +65,7 @@ float scale2 = 0.2;
 float VSupply = 28;
 float MaxVmotor = 12.0;
 
-int pwmMax = 100;
+int pwmMax = 400;
 
 float diffFilter,diffOffset;
 
@@ -94,7 +94,8 @@ uint8_t CAN_RxData[8];
 uint8_t CAN_TxData[8];
 
 
-uint32_t DeviceID = 3; // Steering
+//uint32_t DeviceID = 3; // Steering
+uint32_t DeviceID = 1; // MKiri
 
 uint32_t TxMailbox;
 
@@ -131,6 +132,20 @@ int16_t MaxPos = 8000;
 int16_t PWM_CAN;
 
 // Maximal 8000
+
+int64_t Encoder_Jarak;
+int16_t prev_encoder;
+int16_t speed_encoder;
+
+uint8_t status_kalib;
+uint8_t cnt_kalib;
+
+int16_t MaxAtas = 1650;
+
+int16_t Encoder_Scale;
+
+uint8_t Kalib_CAN;
+
 
 
 
@@ -211,40 +226,93 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
-	  steer_encoder = __HAL_TIM_GET_COUNTER(&htim1);
-
-
-
-
-	  if(ENC_Fusion > MaxPos)
+	  if(HAL_GetTick() - time_fuse > 20)
 	  {
-		  if(PWM_CAN>0)
-			  PWM_out=0;
-		  else
-			  PWM_out = PWM_CAN;
+
+
+
+		  time_fuse = HAL_GetTick();
+
+		  speed_encoder = __HAL_TIM_GET_COUNTER(&htim1);
+		  TIM1->CNT = 0;
+
+		  Encoder_Jarak += speed_encoder;
+		  Encoder_Scale = Encoder_Jarak  * 0.001;
+
+		  if(status_kalib==0)
+		  {
+			  motor_pwm(-100);
+			  if(abs(speed_encoder)<50)
+				  cnt_kalib++;
+			  else
+				  cnt_kalib=0;
+
+			  if(cnt_kalib>50)
+			  {
+				  cnt_kalib=0;
+				  status_kalib=1;
+				  Encoder_Jarak = 0;
+				  motor_pwm(0);
+			  }
+
+		  }
+		  else if(status_kalib == 1)
+		  {
+
+
+			  if(Kalib_CAN == 1)
+			  {
+				  status_kalib = 0;
+			  }
+
+			  if(Encoder_Scale > 1650)
+			  {
+				  if(PWM_CAN>0)
+				  {
+					  PWM_out = 0;
+				  }
+				  else
+				  {
+					  PWM_out = PWM_CAN;
+				  }
+			  }
+			  else if(Encoder_Scale < -10)
+			  {
+				  if(PWM_CAN<0)
+				  {
+					  PWM_out = 0;
+				  }
+				  else
+				  {
+					  PWM_out = PWM_CAN;
+				  }
+			  }
+			  else
+			  {
+				  PWM_out = PWM_CAN;
+			  }
+
+
+
+
+
+
+
+
+
+			  if(PWM_out>pwmMax)
+				  PWM_out = pwmMax;
+			  else if(PWM_out<-pwmMax)
+				  PWM_out = -pwmMax;
+
+
+
+
+			  motor_pwm(PWM_out);
+		  }
 
 	  }
-	  else if(ENC_Fusion < -MaxPos)
-	  {
-		  if(PWM_CAN<0)
-			  PWM_out=0;
-		  else
-			  PWM_out = PWM_CAN;
-	  }
-	  else
-	  {
-		  PWM_out = PWM_CAN;
-	  }
 
-
-
-	  if(PWM_out>pwmMax)
-		  PWM_out = pwmMax;
-	  else if(PWM_out<-pwmMax)
-		  PWM_out = -pwmMax;
-
-
-	  motor_pwm(PWM_out);
 
 
 	  if(HAL_GetTick()-timeS>=200)
@@ -256,13 +324,6 @@ int main(void)
 
 	  }
 
-	  if(HAL_GetTick() - time_fuse>= 1)
-	  {
-		ENC_Fusion = (float)ENC_ABS_Filt * 0.01 + (float)steer_encoder * 0.99;
-		__HAL_TIM_GET_COUNTER(&htim1) = ENC_Fusion;
-
-		time_fuse = HAL_GetTick();
-	  }
 
 
   }
@@ -331,32 +392,12 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 	adcRead[3] = (adcBuff[1] >> 16) & 0xFFFF;
 	adcRead[4] = (adcBuff[2] >> 0)  & 0xFFFF;
 
-	voltage[0] = (float)adcRead[0] * 8.058608e-4;
-	voltage[1] = (float)adcRead[1] * 8.058608e-4;
-	voltage[2] = (float)adcRead[2] * 8.058608e-4;
-	voltage[3] = (float)adcRead[3] * 8.058608e-4;
-	voltage[4] = (float)adcRead[4] * 8.058608e-4;
-
-
-
-	ENC_Abs = (4095 - adcRead[1])-middle_ADC;
-	ADC_To_ENC = ENC_Abs * 12.6079;
-
-	ENC_ABS_Filt = (float)ADC_To_ENC * 0.01 + (float)ENC_ABS_Filt*0.99;
-
-
-
-
-
-
-
-	adcDiff = (int16_t)adcRead[3] - (int16_t)adcRead[4];
 
 }
 
 void motor_pwm(int pwm)
 {
-	if (pwm < 0) {
+	if (pwm > 0) {
 		HAL_GPIO_WritePin(Dir1_GPIO_Port, Dir1_Pin, GPIO_PIN_RESET);
 		HAL_GPIO_WritePin(Dir2_GPIO_Port, Dir2_Pin, GPIO_PIN_SET);
 	} else {
@@ -379,24 +420,25 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 		{
 			if(CAN_RxData[0]==0)
 			{
-				memset(CAN_TxData,0,8);
-				memcpy(CAN_TxData,adcRead,8);
-				HAL_CAN_AddTxMessage(hcan, &TxMsg, CAN_TxData, &TxMailbox);
+//				memset(CAN_TxData,0,8);
+//				memcpy(CAN_TxData,adcRead,8);
+//				HAL_CAN_AddTxMessage(hcan, &TxMsg, CAN_TxData, &TxMailbox);
 			}
 			else if(CAN_RxData[0]==1)
 			{
-				memset(CAN_TxData,0,8);
-				memcpy(CAN_TxData,&adcRead[4],2);
-				memcpy(CAN_TxData+2,&steer_encoder,2);
-				HAL_CAN_AddTxMessage(hcan, &TxMsg, CAN_TxData, &TxMailbox);
+//				memset(CAN_TxData,0,8);
+//				memcpy(CAN_TxData,&adcRead[4],2);
+//				memcpy(CAN_TxData+2,&steer_encoder,2);
+//				HAL_CAN_AddTxMessage(hcan, &TxMsg, CAN_TxData, &TxMailbox);
 			}
 			else if(CAN_RxData[0]==2)
 			{
 				memcpy(&PWM_CAN,CAN_RxData+1,2);
+				Kalib_CAN = CAN_RxData[2];
 
 				memset(CAN_TxData,0,8);
-				memcpy(CAN_TxData,&adcRead[2],2);
-				memcpy(CAN_TxData+2,&ENC_Fusion,2);
+				memcpy(CAN_TxData,&status_kalib,1);
+				memcpy(CAN_TxData+2,&Encoder_Scale,2);
 				HAL_CAN_AddTxMessage(hcan, &TxMsg, CAN_TxData, &TxMailbox);
 			}
 
@@ -406,6 +448,8 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 
 
 }
+
+
 
 
 /* USER CODE END 4 */
