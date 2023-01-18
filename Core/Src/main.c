@@ -95,7 +95,8 @@ uint8_t CAN_TxData[8];
 
 
 //uint32_t DeviceID = 3; // Steering
-uint32_t DeviceID = 1; // MKiri
+//uint32_t DeviceID = 1; // MKiri
+uint32_t DeviceID = 2; // MKanan
 
 uint32_t TxMailbox;
 
@@ -262,7 +263,7 @@ int main(void)
 
 			  if(Kalib_CAN == 1)
 			  {
-				  status_kalib = 0;
+//				  status_kalib = 0;
 			  }
 
 			  if(Encoder_Scale > 1650)
