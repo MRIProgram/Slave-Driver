@@ -262,7 +262,7 @@ int main(void)
 
 			  if(Kalib_CAN == 1)
 			  {
-				  status_kalib = 0;
+//				  status_kalib = 0;
 			  }
 
 			  if(Encoder_Scale > 1650)
