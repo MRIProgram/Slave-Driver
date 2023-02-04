@@ -126,7 +126,7 @@ int16_t ENC_Fusion;
 
 uint32_t time_fuse;
 
-int16_t MaxPos = 12000;
+int16_t MaxPos = 14000;
 
 int16_t PWM_CAN;
 
